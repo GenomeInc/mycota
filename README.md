@@ -10,9 +10,9 @@ A pnpm + turbo monorepo (same shape as btfp itself), so each concern is its own 
 - **`packages/config`** → `@bubltec/mycota-config` — SSM Parameter Store-backed configuration, namespaced by app and environment. No internal dependencies. See below.
 - **`packages/auth`** → `@bubltec/mycota-auth` — `MycotaAuthModule.forRootAsync({ useFactory })`, `JwtAuthGuard`, `VerifiedGuard`, `CurrentUser`, `UsersService`, `EmailCodeService`, plus the SSM convenience `buildMycotaAuthConfigFromSsm`. Depends on `@bubltec/mycota-dynamo`, `@bubltec/mycota-config`, and `@bubltec/mycota-mail`.
 - **`packages/professional-verification`** → `@bubltec/mycota-professional-verification` — request/confirm/review workflow for "prove you belong to an organization," built on `@bubltec/mycota-auth`'s email-code flow. Depends on `@bubltec/mycota-auth`.
-- **`packages/cdk`** → `@bubltec/mycota-cdk` — CDK constructs: `grantSsmConfigRead`, `EphemeralConfig`, `MediaBucket` (private S3 + CloudFront OAC), `JobQueue` (SQS + DLQ + EventBridge Scheduler group), and `PostgresInstance` (RDS Postgres 16; app brings the VPC). Depends on `@bubltec/mycota-config`; `aws-cdk-lib`/`constructs` are peer dependencies (bring your own pinned CDK version). See below.
+- **`packages/cdk`** → `@bubltec/mycota-cdk` — CDK constructs: `grantSsmConfigRead`, `EphemeralConfig`, `MediaBucket` (private S3 + CloudFront OAC), `JobQueue` (SQS + DLQ + EventBridge Scheduler group), `PostgresInstance` (RDS Postgres 16; app brings the VPC), `SesDomain` (verified sending identity + Easy DKIM + MAIL FROM), and `GithubActionsDeployRole` (GitHub OIDC assume-role for `cdk deploy`). Depends on `@bubltec/mycota-config`; `aws-cdk-lib`/`constructs` are peer dependencies (bring your own pinned CDK version). See below.
 - **`packages/payments`** → `@bubltec/mycota-payments` — `PaymentGateway` port, `FakePaymentGateway` for local/tests, and a `StripePaymentGateway` that destination-charges Stripe Connect accounts. `ConnectOnboarding` + `FakeConnectOnboarding` / `StripeConnectOnboarding` for Express account KYC (refresh/return URLs). Refunds reverse the application fee by default. No Nest, no `stripe` SDK dependency — the consuming app passes a Stripe-shaped client in.
-- **`packages/social`** → `@bubltec/mycota-social` — `SocialPublisher` port, a capability map that is honest about what each official API can actually do (TikTok is draft-only until partnership approval; Instagram Stories are not claimed), a `SocialPublisherRegistry` for fan-out, plus Meta / TikTok / X adapters over injected `fetch`.
+- **`packages/social`** → `@bubltec/mycota-social` — `SocialPublisher` port, a capability map that is honest about what each official API can actually do (TikTok is draft-only until partnership approval; Instagram Stories are not claimed), a `SocialPublisherRegistry` for fan-out, plus Meta / TikTok / X adapters over injected `fetch`. Connections are `meta` | `tiktok` | `x`: Facebook Login for Business lists Pages + linked Instagram via `/me/accounts`; Instagram and Facebook Page are opted in separately. Instagram Login and Threads are separate OAuth products. `insights()` reads native Graph / X public metrics after publish.
 - **`packages/media`** → `@bubltec/mycota-media` — `MediaStore` port, `FakeMediaStore` for local/tests, `S3MediaStore` over an injected object-store client. Public objects use a CDN/base URL; private objects use signed GET. No AWS SDK dependency.
 - **`packages/jobs`** → `@bubltec/mycota-jobs` — `JobScheduler` port for delayed work (campaign beats days out). `FakeJobScheduler.processDue` locally; `EventBridgeJobScheduler` uses Scheduler `at()` in production — SQS delay is 15 minutes and is the wrong primitive.
 - **`packages/tokens`** → `@bubltec/mycota-tokens` — `TokenVault` for OAuth access/refresh tokens. Refreshes before expiry, marks `needs_reauth` when refresh fails. `EncryptedTokenStore` + `AesGcmSecretBox` at rest. Meta / TikTok / X refreshers over injected `fetch`. Generic `provider` string — not coupled to `@bubltec/mycota-social`.
@@ -84,7 +84,15 @@ reasoning as the rest of the framework, no context-switch to a separate
 templating language, and it's what btfp itself already deploys with.
 
 ```ts
-import { grantSsmConfigRead, EphemeralConfig, MediaBucket, JobQueue, PostgresInstance } from '@bubltec/mycota-cdk';
+import {
+  grantSsmConfigRead,
+  EphemeralConfig,
+  MediaBucket,
+  JobQueue,
+  PostgresInstance,
+  SesDomain,
+  GithubActionsDeployRole,
+} from '@bubltec/mycota-cdk';
 
 // Generalized version of a single ssm.StringParameter...grantRead(handler)
 // call — scope a Lambda/ECS role to read everything under a namespace/env
@@ -116,6 +124,17 @@ jobs.grantConsume(myWorker);
 const db = new PostgresInstance(this, 'Db', { namespace: 'myapp', env: 'dev', vpc });
 db.allowDefaultPortFrom(myLambda);
 db.grantSecretRead(myLambda);
+
+// Verified SES domain. App brings the hosted zone (usually a product subdomain).
+const email = new SesDomain(this, 'Email', { hostedZone });
+email.grantSendEmail(myLambda);
+
+// GitHub Actions OIDC role for `cdk deploy`. Trusts `main` plus the
+// `development` and `production` GitHub Environments by default.
+const ci = new GithubActionsDeployRole(this, 'Gha', {
+  repository: 'acme/myapp',
+  roleName: 'myapp-gha-deploy',
+});
 ```
 
 `aws-cdk-lib`/`constructs` are peer dependencies, not bundled — a consuming

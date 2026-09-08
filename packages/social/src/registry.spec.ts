@@ -30,6 +30,21 @@ describe('SocialPublisherRegistry', () => {
     expect(tt.published).toHaveLength(1);
   });
 
+  it('reads fake insights after publish', async () => {
+    const ig = new FakeSocialPublisher('instagram');
+    const registry = new SocialPublisherRegistry().register(ig);
+    const result = await registry.publish({
+      platform: 'instagram',
+      accountId: 'ig_1',
+      caption: 'Tickets on sale',
+      media: [{ url: 'https://cdn.local/poster.jpg', mimeType: 'image/jpeg' }],
+      kind: 'feed',
+    });
+    const insights = await registry.insights('instagram', result.remoteId!);
+    expect(insights?.impressions).toBeGreaterThan(0);
+    expect(insights?.likes).toBeGreaterThan(0);
+  });
+
   it('fails closed when a platform has no adapter', async () => {
     const registry = new SocialPublisherRegistry();
     await expect(

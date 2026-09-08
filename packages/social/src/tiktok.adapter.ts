@@ -3,6 +3,7 @@ import type {
   FetchLike,
   OAuthAppConfig,
   PlatformPost,
+  PostInsights,
   PublishResult,
   SocialCapability,
   SocialPublisher,
@@ -77,6 +78,11 @@ export class TikTokSocialPublisher implements SocialPublisher {
         },
       };
     }
+  }
+
+  async insights(_remoteId: string): Promise<PostInsights | undefined> {
+    // Draft-tray publish_id is not a public video id; query metrics once Direct Post lands.
+    return undefined;
   }
 }
 
