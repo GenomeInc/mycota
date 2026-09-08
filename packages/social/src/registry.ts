@@ -1,5 +1,5 @@
 import { assertSupported, PLATFORM_CAPABILITIES } from './capabilities.js';
-import type { PlatformPost, PublishResult, SocialPlatform, SocialPublisher } from './ports.js';
+import type { PlatformPost, PostInsights, PublishResult, SocialPlatform, SocialPublisher } from './ports.js';
 
 export class UnsupportedPlatformError extends Error {
   constructor(public readonly platform: SocialPlatform) {
@@ -33,6 +33,10 @@ export class SocialPublisherRegistry {
 
   async publishAll(posts: PlatformPost[]): Promise<PublishResult[]> {
     return Promise.all(posts.map((post) => this.publish(post)));
+  }
+
+  async insights(platform: SocialPlatform, remoteId: string): Promise<PostInsights | undefined> {
+    return this.get(platform).insights(remoteId);
   }
 
   supportedKinds(platform: SocialPlatform): string[] {

@@ -45,4 +45,28 @@ describe('MetaSocialPublisher', () => {
     expect(result.error?.code).toBe('needs_reauth');
     expect(result.error?.retryable).toBe(false);
   });
+
+  it('maps Instagram media insights', async () => {
+    const fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          data: [
+            { name: 'views', values: [{ value: 900 }] },
+            { name: 'reach', values: [{ value: 700 }] },
+            { name: 'likes', values: [{ value: 40 }] },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const publisher = new MetaSocialPublisher('instagram', {
+      fetch: fetch as unknown as typeof globalThis.fetch,
+      tokens: { accessToken: 'tok' },
+      igUserId: '1784',
+    });
+    const insights = await publisher.insights('media_9');
+    expect(insights?.impressions).toBe(900);
+    expect(insights?.reach).toBe(700);
+    expect(insights?.likes).toBe(40);
+  });
 });

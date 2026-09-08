@@ -3,6 +3,7 @@ import type {
   FetchLike,
   OAuthAppConfig,
   PlatformPost,
+  PostInsights,
   PublishResult,
   SocialCapability,
   SocialPublisher,
@@ -58,6 +59,31 @@ export class XSocialPublisher implements SocialPublisher {
           retryable: true,
         },
       };
+    }
+  }
+
+  async insights(remoteId: string): Promise<PostInsights | undefined> {
+    if (!remoteId) return undefined;
+    try {
+      const response = await this.fetch(
+        `${this.baseUrl}/tweets/${encodeURIComponent(remoteId)}?tweet.fields=public_metrics`,
+        { headers: { authorization: `Bearer ${this.options.tokens.accessToken}` } },
+      );
+      if (!response.ok) return undefined;
+      const body = (await response.json()) as {
+        data?: { public_metrics?: { impression_count?: number; like_count?: number; reply_count?: number; retweet_count?: number } };
+      };
+      const metrics = body.data?.public_metrics;
+      if (!metrics) return undefined;
+      return {
+        impressions: metrics.impression_count,
+        likes: metrics.like_count,
+        comments: metrics.reply_count,
+        shares: metrics.retweet_count,
+        fetchedAt: new Date().toISOString(),
+      };
+    } catch {
+      return undefined;
     }
   }
 }

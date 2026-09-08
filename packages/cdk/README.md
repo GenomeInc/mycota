@@ -2,7 +2,9 @@
 
 CDK constructs for mycota: SSM config grants and ephemeral bootstrap, plus
 a private `MediaBucket` (S3 + CloudFront OAC), a `JobQueue` (SQS + DLQ +
-EventBridge Scheduler group), and a `PostgresInstance` (RDS Postgres 16).
+EventBridge Scheduler group), a `PostgresInstance` (RDS Postgres 16), a
+`SesDomain` (verified sending identity), and a `GithubActionsDeployRole`
+(OIDC assume-role for `cdk deploy`).
 
 `aws-cdk-lib`/`constructs` are **peer dependencies**, not bundled — bring
 your own pinned CDK version. Installing this package doesn't pull in a
@@ -114,6 +116,42 @@ import { PostgresInstance } from '@bubltec/mycota-cdk';
 const db = new PostgresInstance(this, 'Db', { namespace: 'myapp', env: 'dev', vpc });
 db.allowDefaultPortFrom(myApi);
 db.grantSecretRead(myApi);
+```
+
+## `SesDomain` construct
+
+Verified SES sending domain with Easy DKIM and a custom MAIL FROM
+(`mail.<domain>` by default). The app supplies the `IPublicHostedZone` —
+typically a product subdomain so bounce reputation stays off the parent
+org domain. CDK writes the DKIM CNAMEs and MAIL FROM MX/SPF into that zone.
+
+```ts
+import { SesDomain } from '@bubltec/mycota-cdk';
+
+const email = new SesDomain(this, 'Email', { hostedZone });
+email.grantSendEmail(myApi);
+// email.domain → sloth.example.com
+// email.mailFromDomain → mail.sloth.example.com
+```
+
+## `GithubActionsDeployRole` construct
+
+IAM role GitHub Actions assumes via OIDC to run `cdk deploy`. Trusts both
+the ref-based `sub` (`repo:owner/name:ref:refs/heads/main`) and the
+environment form (`repo:owner/name:environment:production`) — a job with
+`environment:` sends the latter, not the ref. The role may only assume the
+four CDK bootstrap roles; it has no other AWS permissions.
+
+Imports the account's existing `token.actions.githubusercontent.com`
+provider rather than creating one (IAM allows only one per URL).
+
+```ts
+import { GithubActionsDeployRole } from '@bubltec/mycota-cdk';
+
+const ci = new GithubActionsDeployRole(this, 'Gha', {
+  repository: 'bubltec/political-sloth',
+  roleName: 'sloth-gha-deploy',
+});
 ```
 
 ## Testing this package locally

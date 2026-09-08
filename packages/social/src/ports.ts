@@ -52,10 +52,21 @@ export interface PublishResult {
   error?: PublishFailure;
 }
 
+/** Native platform totals — not a third-party aggregator. Absent fields were not returned. */
+export interface PostInsights {
+  impressions?: number;
+  reach?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  fetchedAt: string;
+}
+
 export interface SocialPublisher {
   readonly platform: SocialPlatform;
   capabilities(): SocialCapability[];
   publish(post: PlatformPost): Promise<PublishResult>;
+  insights(remoteId: string): Promise<PostInsights | undefined>;
 }
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
